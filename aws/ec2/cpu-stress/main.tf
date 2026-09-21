@@ -73,7 +73,7 @@ resource "aws_iam_role" "fis" {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
         },
         ArnLike = {
-          "aws:SourceArn" = "arn:$${data.aws_partition.current.partition}:fis:$${data.aws_region.current.name}:$${data.aws_caller_identity.current.account_id}:experiment/*"
+          "aws:SourceArn" = "arn:${data.aws_partition.current.partition}:fis:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:experiment/*"
         }
       }
     }]
@@ -82,7 +82,7 @@ resource "aws_iam_role" "fis" {
 
 resource "aws_iam_role_policy_attachment" "fis_ssm" {
   role       = aws_iam_role.fis.name
-  policy_arn = "arn:$${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSFaultInjectionSimulatorSSMAccess"
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSFaultInjectionSimulatorSSMAccess"
 }
 
 resource "aws_fis_experiment_template" "cpu_stress" {
@@ -96,7 +96,7 @@ resource "aws_fis_experiment_template" "cpu_stress" {
     action_id = "aws:ssm:send-command"
     parameter {
       key   = "documentArn"
-      value = "arn:$${data.aws_partition.current.partition}:ssm:$${data.aws_region.current.name}::document/AWSFIS-Run-CPU-Stress"
+      value = "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.name}::document/AWSFIS-Run-CPU-Stress"
     }
     parameter {
       key   = "documentParameters"
