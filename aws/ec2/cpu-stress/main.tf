@@ -1,1 +1,140 @@
-terraform {\n  required_version = ">= 1.6.0"\n\n  required_providers {\n    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 6.0"\n    }\n  }\n}\n\nprovider "aws" {\n  region = var.aws_region\n}\n\ndata "aws_caller_identity" "current" {}\ndata "aws_partition" "current" {}\ndata "aws_region" "current" {}\n\nvariable "aws_region" {\n  type        = string\n  description = "AWS region used by the FIS experiment."\n  default     = "eu-west-2"\n}\n\nvariable "target_tag_key" {\n  type        = string\n  description = "Tag key used to select the sandbox EC2 target."\n  default     = "ChaosLab"\n}\n\nvariable "target_tag_value" {\n  type        = string\n  description = "Tag value used to select the sandbox EC2 target."\n  default     = "cpu-stress"\n}\n\nvariable "duration_seconds" {\n  type        = number\n  description = "CPU stress duration in seconds."\n  default     = 60\n\n  validation {\n    condition     = var.duration_seconds >= 60 && var.duration_seconds <= 600\n    error_message = "duration_seconds must be between 60 and 600 seconds."\n  }\n}\n\nvariable "load_percent" {\n  type        = number\n  description = "CPU load percentage."\n  default     = 50\n\n  validation {\n    condition     = var.load_percent >= 1 && var.load_percent <= 100\n    error_message = "load_percent must be between 1 and 100."\n  }\n}\n\nvariable "fis_role_name" {\n  type        = string\n  description = "Name for the IAM role assumed by AWS FIS."\n  default     = "multi-cloud-chaos-lab-fis-ssm"\n}\n\nresource "aws_iam_role" "fis" {\n  name = var.fis_role_name\n\n  assume_role_policy = jsonencode({\n    Version = "2012-10-17"\n    Statement = [{\n      Effect = "Allow"\n      Principal = {\n        Service = "fis.amazonaws.com"\n      }\n      Action = "sts:AssumeRole"\n      Condition = {\n        StringEquals = {\n          "aws:SourceAccount" = data.aws_caller_identity.current.account_id\n        }\n        ArnLike = {\n          "aws:SourceArn" = "arn:$${data.aws_partition.current.partition}:fis:$${data.aws_region.current.name}:$${data.aws_caller_identity.current.account_id}:experiment/*"\n        }\n      }\n    }]\n  })\n}\n\nresource "aws_iam_role_policy_attachment" "fis_ssm" {\n  role       = aws_iam_role.fis.name\n  policy_arn = "arn:$${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSFaultInjectionSimulatorSSMAccess"\n}\n\nresource "aws_fis_experiment_template" "cpu_stress" {\n  description = "Controlled CPU stress against one tagged sandbox EC2 instance."\n  role_arn    = aws_iam_role.fis.arn\n\n  stop_condition {\n    source = "none"\n  }\n\n  action {\n    name      = "cpu-stress"\n    action_id = "aws:ssm:send-command"\n\n    parameter {\n      key   = "documentArn"\n      value = "arn:$${data.aws_partition.current.partition}:ssm:$${data.aws_region.current.name}::document/AWSFIS-Run-CPU-Stress"\n    }\n\n    parameter {\n      key   = "documentParameters"\n      value = jsonencode({\n        DurationSeconds     = tostring(var.duration_seconds)\n        LoadPercent         = tostring(var.load_percent)\n        InstallDependencies = "True"\n      })\n    }\n\n    parameter {\n      key   = "duration"\n      value = "PT10M"\n    }\n\n    target {\n      key   = "Instances"\n      value = "ec2-target"\n    }\n  }\n\n  target {\n    name           = "ec2-target"\n    resource_type  = "aws:ec2:instance"\n    selection_mode = "COUNT(1)"\n\n    resource_tag {\n      key   = var.target_tag_key\n      value = var.target_tag_value\n    }\n  }\n\n  tags = {\n    Project     = "multi-cloud-chaos-lab"\n    Experiment  = "cpu-stress"\n    Environment = "sandbox"\n  }\n}\n\noutput "experiment_template_id" {\n  value = aws_fis_experiment_template.cpu_stress.id\n}\n\noutput "target_tag" {\n  value = "$${var.target_tag_key}=$${var.target_tag_value}"\n}\n
+terraform {
+  required_version = ">= 1.6.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+data "aws_region" "current" {}
+
+variable "aws_region" {
+  type        = string
+  description = "AWS region used by the FIS experiment."
+  default     = "eu-west-2"
+}
+
+variable "target_tag_key" {
+  type        = string
+  description = "Tag key used to select the sandbox EC2 target."
+  default     = "ChaosLab"
+}
+
+variable "target_tag_value" {
+  type        = string
+  description = "Tag value used to select the sandbox EC2 target."
+  default     = "cpu-stress"
+}
+
+variable "duration_seconds" {
+  type        = number
+  description = "CPU stress duration in seconds."
+  default     = 60
+  validation {
+    condition     = var.duration_seconds >= 60 && var.duration_seconds <= 600
+    error_message = "duration_seconds must be between 60 and 600 seconds."
+  }
+}
+
+variable "load_percent" {
+  type        = number
+  description = "CPU load percentage."
+  default     = 50
+  validation {
+    condition     = var.load_percent >= 1 && var.load_percent <= 100
+    error_message = "load_percent must be between 1 and 100."
+  }
+}
+
+variable "fis_role_name" {
+  type        = string
+  description = "Name for the IAM role assumed by AWS FIS."
+  default     = "multi-cloud-chaos-lab-fis-ssm"
+}
+
+resource "aws_iam_role" "fis" {
+  name = var.fis_role_name
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Service = "fis.amazonaws.com" }
+      Action = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        },
+        ArnLike = {
+          "aws:SourceArn" = "arn:$${data.aws_partition.current.partition}:fis:$${data.aws_region.current.name}:$${data.aws_caller_identity.current.account_id}:experiment/*"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "fis_ssm" {
+  role       = aws_iam_role.fis.name
+  policy_arn = "arn:$${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSFaultInjectionSimulatorSSMAccess"
+}
+
+resource "aws_fis_experiment_template" "cpu_stress" {
+  description = "Controlled CPU stress against one tagged sandbox EC2 instance."
+  role_arn    = aws_iam_role.fis.arn
+  stop_condition {
+    source = "none"
+  }
+  action {
+    name      = "cpu-stress"
+    action_id = "aws:ssm:send-command"
+    parameter {
+      key   = "documentArn"
+      value = "arn:$${data.aws_partition.current.partition}:ssm:$${data.aws_region.current.name}::document/AWSFIS-Run-CPU-Stress"
+    }
+    parameter {
+      key   = "documentParameters"
+      value = jsonencode({
+        DurationSeconds     = tostring(var.duration_seconds)
+        LoadPercent         = tostring(var.load_percent)
+        InstallDependencies = "True"
+      })
+    }
+    parameter {
+      key   = "duration"
+      value = "PT10M"
+    }
+    target {
+      key   = "Instances"
+      value = "ec2-target"
+    }
+  }
+  target {
+    name           = "ec2-target"
+    resource_type  = "aws:ec2:instance"
+    selection_mode = "COUNT(1)"
+    resource_tag {
+      key   = var.target_tag_key
+      value = var.target_tag_value
+    }
+  }
+  tags = {
+    Project     = "multi-cloud-chaos-lab"
+    Experiment  = "cpu-stress"
+    Environment = "sandbox"
+  }
+}
+
+output "experiment_template_id" {
+  value = aws_fis_experiment_template.cpu_stress.id
+}
+
+output "target_tag" {
+  value = "${var.target_tag_key}=${var.target_tag_value}"
+}
