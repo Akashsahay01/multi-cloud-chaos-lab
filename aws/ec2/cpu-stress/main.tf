@@ -65,9 +65,9 @@ resource "aws_iam_role" "fis" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "fis.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
       Condition = {
         StringEquals = {
           "aws:SourceAccount" = data.aws_caller_identity.current.account_id
@@ -99,7 +99,7 @@ resource "aws_fis_experiment_template" "cpu_stress" {
       value = "arn:${data.aws_partition.current.partition}:ssm:${data.aws_region.current.region}::document/AWSFIS-Run-CPU-Stress"
     }
     parameter {
-      key   = "documentParameters"
+      key = "documentParameters"
       value = jsonencode({
         DurationSeconds     = tostring(var.duration_seconds)
         LoadPercent         = tostring(var.load_percent)
