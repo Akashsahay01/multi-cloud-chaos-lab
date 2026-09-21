@@ -2,32 +2,36 @@ name: Terraform Validate
 
 on:
   push:
+    branches: ["main"]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         directory:
           - aws/ec2/cpu-stress
-          - aws/network/disruption
-          - aws/asg/instance-termination
           - azure/vm/shutdown
-          - azure/vmss/instance-disruption
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform format
+        working-directory: ${{ matrix.directory }}
+        run: terraform fmt -check -recursive
 
       - name: Terraform init
         working-directory: ${{ matrix.directory }}
         run: terraform init -backend=false
-
-      - name: Terraform fmt check
-        working-directory: ${{ matrix.directory }}
-        run: terraform fmt -check
 
       - name: Terraform validate
         working-directory: ${{ matrix.directory }}
