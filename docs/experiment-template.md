@@ -1,49 +1,68 @@
-# Experiment Template
-
-## Experiment
-
-Name:
+# Chaos Experiment Template
 
 ## Hypothesis
 
-What do we expect to happen?
-
-## Target
-
-What sandbox resource is being targeted?
-
-## Blast radius
-
-What could be affected?
+> If [fault] is introduced against [target], then [expected behaviour] should occur because [reason].
 
 ## Steady state
 
-What does healthy look like before the experiment?
+Describe the healthy state before the experiment.
 
-## Method
+## Target
 
-How is the fault introduced?
+Resource:
 
-## Duration
+Target selection:
 
-How long will the fault run?
+Why this target is safe:
+
+## Blast radius
+
+Expected impact:
+
+Known exclusions:
+
+Maximum number of resources:
+
+## Fault parameters
+
+Duration:
+
+Intensity:
 
 ## Observability
 
-Which metrics, logs and traces will be checked?
+Metrics:
+
+Logs:
+
+Traces:
+
+Alerts:
 
 ## Abort conditions
 
-When should the experiment be stopped?
+Stop the experiment if:
+
+- user-facing availability crosses the agreed threshold;
+- an unrelated incident begins;
+- the experiment exceeds the expected blast radius;
+- recovery does not behave as expected.
 
 ## Recovery
 
-How does the workload return to steady state?
+Expected recovery mechanism:
+
+Manual recovery procedure:
+
+Recovery objective:
 
 ## Result
 
-What happened?
+Observed behaviour:
 
-## Follow-up
+Hypothesis confirmed / rejected:
 
-What should be changed after the experiment?
+Evidence:
+
+Follow-up actions:
