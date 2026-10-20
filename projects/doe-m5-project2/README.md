@@ -18,7 +18,7 @@ This project area is an initial implementation scaffold for immutable EC2 image 
 - `app/`: Python HTTP app and test.
 - `packer/`: Amazon Linux 2023 AMI template.
 - `terraform/`: EC2 and security group resources for staging/production.
-- `scripts/`: health checks.
+- `scripts/`: health checks and AWS CLI inspection.
 - `.github/workflows/`: CI and deployment workflows.
 
 ## Safety and prerequisites
@@ -30,7 +30,7 @@ This project area is an initial implementation scaffold for immutable EC2 image 
 - EC2, AMI storage and related resources can incur charges. Clean up project resources after assessment.
 - This small learning setup does not by itself guarantee zero downtime. An ALB and multiple instances would be needed for a more realistic low-downtime deployment.
 
-## Local checks
+## GitHub Actions setup before deployment\n\nThe CI workflow runs without AWS credentials. The image-build and deployment workflows require GitHub Environments and OIDC roles to be configured first.\n\nCreate these GitHub Environments: `image-build`, `staging`, and `production`. Configure environment variables as follows:\n\n- `AWS_IMAGE_BUILD_ROLE_ARN` in `image-build`: IAM role allowed to build the AMI using Packer.\n- `AWS_DEPLOY_ROLE_ARN` in `staging` and `production`: least-privilege role for the deployment workflow.\n- `AWS_REGION` in each environment, e.g. `eu-west-2`.\n- `ALLOWED_CIDR` in staging/production: your public IP as a `/32` CIDR.\n- `TF_STATE_BUCKET` in staging/production: an existing S3 bucket for remote Terraform state, with encryption and versioning enabled. The workflow uses separate state keys per environment.\n\nConfigure an OIDC trust policy scoped to this repository, branch and/or GitHub Environment. The state bucket must already exist and the role must have access to the relevant state object. Configure required reviewers on the `production` GitHub Environment to add an approval gate. Do not run the deployment workflow until these prerequisites are configured and the generated Terraform plan has been reviewed.\n\nThe deployment workflow is manually triggered and accepts a concrete AMI ID and version. Build the AMI with the image-build workflow first. **This scaffold does not yet automatically roll back a deployment after a post-deployment health-check failure**; until that recovery behaviour is implemented and tested, treat Task 4 as incomplete and do not use this for production workloads.\n\n## Local checks
 
 From the repository root:
 
