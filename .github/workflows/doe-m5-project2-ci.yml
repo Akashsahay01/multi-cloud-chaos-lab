@@ -1,0 +1,41 @@
+name: DOE M5 Project 2 - CI
+
+on:
+  pull_request:
+    paths:
+      - "projects/doe-m5-project2/**"
+      - ".github/workflows/doe-m5-project2-*.yml"
+  push:
+    branches: ["main", "doe-m5-project2"]
+    paths:
+      - "projects/doe-m5-project2/**"
+      - ".github/workflows/doe-m5-project2-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test application health endpoint
+        run: python projects/doe-m5-project2/app/test_app.py
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+      - name: Terraform format check
+        run: terraform -chdir=projects/doe-m5-project2/terraform fmt -check -recursive
+      - name: Terraform init without backend
+        run: terraform -chdir=projects/doe-m5-project2/terraform init -backend=false
+      - name: Terraform validate
+        run: terraform -chdir=projects/doe-m5-project2/terraform validate
+      - uses: hashicorp/setup-packer@main
+        with:
+          packer_version: "1.11.2"
+      - name: Packer format check
+        run: packer fmt -check projects/doe-m5-project2/packer/app-image.pkr.hcl
