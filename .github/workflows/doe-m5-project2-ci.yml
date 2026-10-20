@@ -36,6 +36,6 @@ jobs:
         run: terraform -chdir=projects/doe-m5-project2/terraform validate
       - uses: hashicorp/setup-packer@main
         with:
-          packer_version: "1.11.2"
+          version: "1.11.2"
       - name: Packer format check
         run: packer fmt -check projects/doe-m5-project2/packer/app-image.pkr.hcl

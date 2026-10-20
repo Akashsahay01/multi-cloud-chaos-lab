@@ -27,7 +27,7 @@ jobs:
         run: aws sts get-caller-identity
       - uses: hashicorp/setup-packer@main
         with:
-          packer_version: "1.11.2"
+          version: "1.11.2"
       - name: Initialise Packer plugins
         working-directory: projects/doe-m5-project2/packer
         run: packer init app-image.pkr.hcl
