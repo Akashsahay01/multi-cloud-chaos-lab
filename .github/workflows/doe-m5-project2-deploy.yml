@@ -41,6 +41,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'eu-west-2' }}
+
       - name: Verify AWS account and AMI
         env:
           AMI_ID: ${{ inputs.ami_id }}
@@ -49,6 +50,31 @@ jobs:
           aws sts get-caller-identity
           [[ "$AMI_ID" =~ ^ami-[0-9a-f]+$ ]] || { echo "Provide a concrete AMI ID" >&2; exit 1; }
           aws ec2 describe-images --image-ids "$AMI_ID" --query 'Images[0].ImageId' --output text
+
+      - name: Capture current deployment for rollback
+        id: previous
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          REGION: ${{ vars.AWS_REGION || 'eu-west-2' }}
+        run: |
+          set -Eeuo pipefail
+          instance_id="$(aws ec2 describe-instances --region "$REGION" \
+            --filters "Name=tag:Project,Values=DOE-M5-Project2" "Name=tag:Environment,Values=$TARGET_ENVIRONMENT" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId | [0]' --output text)"
+          if [[ -z "$instance_id" || "$instance_id" == "None" ]]; then
+            echo "ami_id=" >> "$GITHUB_OUTPUT"
+            echo "app_version=" >> "$GITHUB_OUTPUT"
+            echo "No existing running deployment found; automatic rollback is unavailable for the first deployment."
+          else
+            previous_ami="$(aws ec2 describe-instances --region "$REGION" --instance-ids "$instance_id" --query 'Reservations[0].Instances[0].ImageId' --output text)"
+            previous_version="$(aws ec2 describe-instances --region "$REGION" --instance-ids "$instance_id" --query "Reservations[0].Instances[0].Tags[?Key=='AppVersion'].Value | [0]" --output text)"
+            [[ "$previous_ami" =~ ^ami-[0-9a-f]+$ ]] || { echo "Could not determine previous AMI" >&2; exit 1; }
+            [[ -n "$previous_version" && "$previous_version" != "None" ]] || previous_version="rollback"
+            echo "ami_id=$previous_ami" >> "$GITHUB_OUTPUT"
+            echo "app_version=$previous_version" >> "$GITHUB_OUTPUT"
+            echo "Captured previous AMI $previous_ami for rollback."
+          fi
+
       - name: Create environment configuration
         env:
           AMI_ID: ${{ inputs.ami_id }}
@@ -69,6 +95,7 @@ jobs:
           app_version = "$APP_VERSION"
           allowed_cidr = "$ALLOWED_CIDR"
           EOF
+
       - name: Initialise remote Terraform state
         env:
           STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
@@ -77,12 +104,18 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ -n "$STATE_BUCKET" ]] || { echo "Set TF_STATE_BUCKET in this GitHub Environment." >&2; exit 1; }
-          terraform -chdir=projects/doe-m5-project2/terraform init             -backend-config="bucket=$STATE_BUCKET"             -backend-config="key=doe-m5-project2/$TARGET_ENVIRONMENT/terraform.tfstate"             -backend-config="region=$REGION"             -backend-config="encrypt=true"
+          terraform -chdir=projects/doe-m5-project2/terraform init \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="key=doe-m5-project2/$TARGET_ENVIRONMENT/terraform.tfstate" \
+            -backend-config="region=$REGION" \
+            -backend-config="encrypt=true"
+
       - name: Terraform validate
         run: terraform -chdir=projects/doe-m5-project2/terraform validate
       - name: Terraform plan
         run: terraform -chdir=projects/doe-m5-project2/terraform plan -out=tfplan
       - name: Apply deployment plan
+        id: apply
         run: terraform -chdir=projects/doe-m5-project2/terraform apply -auto-approve tfplan
       - name: Read health endpoint
         id: deployed
@@ -93,3 +126,26 @@ jobs:
         env:
           HEALTH_URL: ${{ steps.deployed.outputs.url }}
         run: bash projects/doe-m5-project2/scripts/health-check.sh "$HEALTH_URL"
+
+      - name: Roll back to previous AMI if health check fails
+        if: failure() && steps.apply.outcome == 'success' && steps.previous.outputs.ami_id != ''
+        env:
+          PREVIOUS_AMI_ID: ${{ steps.previous.outputs.ami_id }}
+          PREVIOUS_APP_VERSION: ${{ steps.previous.outputs.app_version }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          REGION: ${{ vars.AWS_REGION || 'eu-west-2' }}
+          ALLOWED_CIDR: ${{ vars.ALLOWED_CIDR }}
+        run: |
+          set -Eeuo pipefail
+          echo "Health validation failed; restoring the previously deployed AMI."
+          cat > projects/doe-m5-project2/terraform/ci.auto.tfvars <<EOF
+          aws_region = "$REGION"
+          environment = "$TARGET_ENVIRONMENT"
+          ami_id = "$PREVIOUS_AMI_ID"
+          app_version = "$PREVIOUS_APP_VERSION"
+          allowed_cidr = "$ALLOWED_CIDR"
+          EOF
+          terraform -chdir=projects/doe-m5-project2/terraform plan -out=rollback.tfplan
+          terraform -chdir=projects/doe-m5-project2/terraform apply -auto-approve rollback.tfplan
+          rollback_url="$(terraform -chdir=projects/doe-m5-project2/terraform output -raw health_url)"
+          bash projects/doe-m5-project2/scripts/health-check.sh "$rollback_url"
