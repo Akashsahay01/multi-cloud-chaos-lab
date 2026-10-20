@@ -1,0 +1,38 @@
+name: DOE M5 Project 2 - Build AMI
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region for the image
+        required: true
+        default: eu-west-2
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    environment: image-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_IMAGE_BUILD_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+      - name: Confirm AWS identity
+        run: aws sts get-caller-identity
+      - uses: hashicorp/setup-packer@main
+        with:
+          packer_version: "1.11.2"
+      - name: Initialise Packer plugins
+        working-directory: projects/doe-m5-project2/packer
+        run: packer init app-image.pkr.hcl
+      - name: Validate image template
+        working-directory: projects/doe-m5-project2/packer
+        run: packer validate -var "aws_region=${{ inputs.aws_region }}" app-image.pkr.hcl
+      - name: Build immutable AMI
+        run: packer build -var "aws_region=${{ inputs.aws_region }}" projects/doe-m5-project2/packer/app-image.pkr.hcl
